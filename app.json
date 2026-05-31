@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Boulder Hall Demo",
+    "slug": "boulder-hall-demo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111315"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#111315"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.demo.boulderhall"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "91c57098-d144-4072-900e-68621a829580"
+      }
+    }
+  }
+}
