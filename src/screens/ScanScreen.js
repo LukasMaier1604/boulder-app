@@ -10,6 +10,10 @@ export function ScanScreen({ navigation }) {
   const { routes, openRoute } = useAppState();
 
   const handleManualLoad = () => {
+    if (!routes.length) {
+      return;
+    }
+
     openRoute(routes[0].id);
     navigation.navigate('RouteDetails');
   };
@@ -20,8 +24,17 @@ export function ScanScreen({ navigation }) {
         <Text style={styles.copy}>
           Starte den simulierten NFC-Scan. Danach erscheint bewusst ein Scanner-/Loader-Screen mit kleiner Verzoegerung.
         </Text>
-        <PrimaryButton label="Route scannen" onPress={() => navigation.navigate('ScanLoading')} />
-        <PrimaryButton label="Route manuell laden" onPress={handleManualLoad} variant="ghost" />
+        <PrimaryButton
+          disabled={!routes.length}
+          label="Route scannen"
+          onPress={() => navigation.navigate('ScanLoading')}
+        />
+        <PrimaryButton
+          disabled={!routes.length}
+          label="Route manuell laden"
+          onPress={handleManualLoad}
+          variant="ghost"
+        />
       </SectionCard>
     </AppScreen>
   );
@@ -36,4 +49,3 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
-

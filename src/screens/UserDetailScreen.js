@@ -31,7 +31,7 @@ export function UserDetailScreen({ route }) {
 
       <SectionCard eyebrow="Route History" title="Gekletterte Routen">
         <View style={styles.stack}>
-          {user.climbedRoutes.map((entry) => {
+          {user.climbedRoutes.length ? user.climbedRoutes.map((entry) => {
             const routeData = routes.find((item) => item.id === entry.routeId);
             return (
               <View key={`${entry.routeId}-${entry.date}`} style={styles.historyRow}>
@@ -45,7 +45,7 @@ export function UserDetailScreen({ route }) {
                 </View>
               </View>
             );
-          })}
+          }) : <Text style={styles.meta}>Detail-History liefert das Backend aktuell nur fuer dein eigenes Profil.</Text>}
         </View>
       </SectionCard>
     </AppScreen>

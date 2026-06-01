@@ -1,107 +1,138 @@
-import React, { createContext, useContext, useMemo, useReducer } from 'react';
-import { achievementTemplates, routes, users } from '../data/mockData';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useReducer,
+  useRef,
+} from 'react';
+import { achievementTemplates } from '../data/mockData';
+import { api } from '../services/api';
 
 const AppStateContext = createContext(null);
 const avatarColors = ['#F58B1F', '#41C48B', '#5F8BFF', '#D96CFF', '#FF7E54'];
+
+export const demoAccounts = [
+  { id: 'demo-max', email: 'max@demo.de', password: 'demo1234', name: 'Max', avatarColor: '#F58B1F' },
+  { id: 'demo-lisa', email: 'lisa@demo.de', password: 'demo1234', name: 'Lisa', avatarColor: '#41C48B' },
+  { id: 'demo-tom', email: 'tom@demo.de', password: 'demo1234', name: 'Tom', avatarColor: '#5F8BFF' },
+  { id: 'demo-anna', email: 'anna@demo.de', password: 'demo1234', name: 'Anna', avatarColor: '#D96CFF' },
+];
 
 const initialState = {
   currentUserId: null,
   sessionActive: false,
   sessionStartedAt: null,
   activeRouteId: null,
-  users,
+  users: [],
+  routes: [],
+  currentUserStats: null,
+  loading: false,
+  error: null,
 };
 
-function updateCurrentUser(state, updater) {
+function normalizeRoute(route) {
+  const wallType = route.wallType
+    ? route.wallType[0] + route.wallType.slice(1).toLowerCase()
+    : '';
+
   return {
-    ...state,
-    users: state.users.map((user) =>
-      user.id === state.currentUserId ? updater(user) : user
-    ),
+    ...route,
+    wallType,
+    betaSteps: route.betaSteps?.map((step) => step.text ?? step) ?? [],
   };
+}
+
+function normalizeClimbedRoute(entry) {
+  return {
+    routeId: entry.routeId,
+    attempts: entry.attempts,
+    topped: entry.topped,
+    date: new Date(entry.date).toISOString().slice(0, 10),
+    route: entry.route ? normalizeRoute(entry.route) : undefined,
+  };
+}
+
+function normalizeUser(user, climbedRoutes = []) {
+  return {
+    ...user,
+    sessionsCount: user.sessionsCount ?? user._count?.sessions ?? 0,
+    climbedRoutes: climbedRoutes.map(normalizeClimbedRoute),
+  };
+}
+
+function mergeUsers(users, user) {
+  const existing = users.filter((entry) => entry.id !== user.id);
+  return [...existing, user];
 }
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'LOGIN':
-      return { ...state, currentUserId: action.userId, sessionActive: false, activeRouteId: null };
+    case 'REQUEST':
+      return { ...state, loading: true, error: null };
+    case 'FAILURE':
+      return { ...state, loading: false, error: action.error };
+    case 'LOGIN_SUCCESS':
+      return {
+        ...state,
+        currentUserId: action.user.id,
+        users: mergeUsers(state.users, action.user),
+        sessionActive: action.sessionActive,
+        sessionStartedAt: action.sessionStartedAt,
+        loading: false,
+        error: null,
+      };
+    case 'HYDRATE':
+      return {
+        ...state,
+        users: action.users,
+        routes: action.routes,
+        currentUserStats: action.stats,
+        loading: false,
+        error: null,
+      };
     case 'LOGOUT':
-      return { ...state, currentUserId: null, sessionActive: false, sessionStartedAt: null, activeRouteId: null };
-    case 'START_SESSION':
-      return updateCurrentUser(
-        {
-          ...state,
-          sessionActive: true,
-          sessionStartedAt: new Date().toISOString(),
-        },
-        (user) => ({ ...user, sessionsCount: user.sessionsCount + 1 }),
-      );
-    case 'STOP_SESSION':
+      return {
+        ...state,
+        currentUserId: null,
+        sessionActive: false,
+        sessionStartedAt: null,
+        activeRouteId: null,
+        currentUserStats: null,
+        error: null,
+      };
+    case 'SESSION_STARTED':
+      return {
+        ...state,
+        sessionActive: true,
+        sessionStartedAt: action.startedAt,
+        users: mergeUsers(state.users, {
+          ...action.user,
+          sessionsCount: action.user.sessionsCount + 1,
+        }),
+      };
+    case 'SESSION_STOPPED':
       return { ...state, sessionActive: false, sessionStartedAt: null, activeRouteId: null };
     case 'OPEN_ROUTE':
       return { ...state, activeRouteId: action.routeId };
-    case 'UPDATE_NAME':
-      return updateCurrentUser(state, (user) => ({ ...user, name: action.name || user.name }));
-    case 'CYCLE_AVATAR':
-      return updateCurrentUser(state, (user) => {
-        const currentIndex = avatarColors.indexOf(user.avatarColor);
-        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % avatarColors.length;
-        return { ...user, avatarColor: avatarColors[nextIndex] };
-      });
-    case 'INCREMENT_ATTEMPT':
-      return updateCurrentUser(state, (user) => {
-        const existingEntry = user.climbedRoutes.find((entry) => entry.routeId === action.routeId);
-        const nextRoutes = existingEntry
-          ? user.climbedRoutes.map((entry) =>
-              entry.routeId === action.routeId
-                ? { ...entry, attempts: entry.attempts + 1 }
-                : entry,
-            )
-          : [
-              ...user.climbedRoutes,
-              { routeId: action.routeId, attempts: 1, date: new Date().toISOString().slice(0, 10), topped: false },
-            ];
-
-        return { ...user, climbedRoutes: nextRoutes };
-      });
-    case 'RESET_ATTEMPTS':
-      return updateCurrentUser(state, (user) => ({
-        ...user,
-        climbedRoutes: user.climbedRoutes.map((entry) =>
-          entry.routeId === action.routeId ? { ...entry, attempts: 0 } : entry,
-        ),
-      }));
-    case 'COMPLETE_ROUTE':
-      return updateCurrentUser(state, (user) => {
-        const existingEntry = user.climbedRoutes.find((entry) => entry.routeId === action.routeId);
-        const nextRoutes = existingEntry
-          ? user.climbedRoutes.map((entry) =>
-              entry.routeId === action.routeId
-                ? { ...entry, topped: true, date: new Date().toISOString().slice(0, 10) }
-                : entry,
-            )
-          : [
-              ...user.climbedRoutes,
-              { routeId: action.routeId, attempts: 0, date: new Date().toISOString().slice(0, 10), topped: true },
-            ];
-
-        return { ...user, climbedRoutes: nextRoutes };
-      });
     default:
       return state;
   }
 }
 
-function buildAchievements(user) {
+function buildAchievements(user, routes) {
   const toppedRoutes = user.climbedRoutes.filter((entry) => entry.topped);
   const flashedRoutes = toppedRoutes.filter((entry) => entry.attempts <= 1);
   const uniqueGrades = new Set(
     user.climbedRoutes
-      .map((entry) => routes.find((route) => route.id === entry.routeId)?.grade)
+      .map((entry) => {
+        const route = entry.route ?? routes.find((item) => item.id === entry.routeId);
+        return route?.grade;
+      })
       .filter(Boolean),
   );
   const hardestTop = toppedRoutes.some((entry) => {
-    const route = routes.find((item) => item.id === entry.routeId);
+    const route = entry.route ?? routes.find((item) => item.id === entry.routeId);
     return route && route.gradeValue >= 5;
   });
 
@@ -129,89 +160,230 @@ function buildAchievements(user) {
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const tokenRef = useRef(null);
 
   const currentUser = useMemo(
     () => state.users.find((user) => user.id === state.currentUserId) ?? null,
     [state.currentUserId, state.users],
   );
 
-  const currentRoute = useMemo(
-    () => routes.find((route) => route.id === state.activeRouteId) ?? null,
-    [state.activeRouteId],
+  const refreshDashboard = useCallback(async (token) => {
+    const [meResult, routesResult, leaderboardResult, statsResult, climbedResult] = await Promise.all([
+      api.me(token),
+      api.routes(token),
+      api.leaderboard(token),
+      api.stats(token),
+      api.climbed(token),
+    ]);
+
+    const latestSession = meResult.user.sessions?.[0];
+    const sessionActive = Boolean(latestSession && !latestSession.endedAt);
+    const leaderboardUsers = (leaderboardResult.leaderboard ?? []).map((user) => ({
+      ...user,
+      climbedRoutes: [],
+    }));
+    const currentLeaderboardUser = leaderboardUsers.find((user) => user.id === meResult.user.id);
+    const fullCurrentUser = {
+      ...currentLeaderboardUser,
+      ...normalizeUser(meResult.user, climbedResult.climbedRoutes ?? []),
+    };
+
+    dispatch({
+      type: 'HYDRATE',
+      routes: (routesResult.routes ?? []).map(normalizeRoute),
+      users: mergeUsers(leaderboardUsers, fullCurrentUser),
+      stats: statsResult.stats,
+    });
+
+    dispatch({
+      type: 'LOGIN_SUCCESS',
+      user: fullCurrentUser,
+      sessionActive,
+      sessionStartedAt: sessionActive ? latestSession.startedAt : null,
+    });
+  }, []);
+
+  const finishAuth = useCallback(
+    async (authResult) => {
+      tokenRef.current = authResult.token;
+
+      const meResult = await api.me(authResult.token);
+      const latestSession = meResult.user.sessions?.[0];
+      const sessionActive = Boolean(latestSession && !latestSession.endedAt);
+      const user = normalizeUser(meResult.user);
+
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        user,
+        sessionActive,
+        sessionStartedAt: sessionActive ? latestSession.startedAt : null,
+      });
+
+      await refreshDashboard(authResult.token);
+    },
+    [refreshDashboard],
   );
 
-  const leaderboard = useMemo(() => {
-    return state.users
-      .map((user) => {
-        const toppedRoutes = user.climbedRoutes.filter((entry) => entry.topped);
-        const totalAttempts = user.climbedRoutes.reduce((sum, entry) => sum + entry.attempts, 0);
-        const score = toppedRoutes.reduce((sum, entry) => {
-          const route = routes.find((item) => item.id === entry.routeId);
-          return sum + (route?.gradeValue ?? 1) * 100;
-        }, 0);
+  const login = useCallback(
+    async ({ email, password }) => {
+      dispatch({ type: 'REQUEST' });
 
-        return {
-          ...user,
-          toppedCount: toppedRoutes.length,
-          totalAttempts,
-          score,
-        };
-      })
-      .sort((left, right) => right.score - left.score || left.totalAttempts - right.totalAttempts);
-  }, [state.users]);
+      try {
+        const result = await api.login(email.trim(), password);
+        await finishAuth(result);
+      } catch (error) {
+        dispatch({ type: 'FAILURE', error: error.message });
+      }
+    },
+    [finishAuth],
+  );
+
+  const register = useCallback(
+    async ({ name, email, password }) => {
+      dispatch({ type: 'REQUEST' });
+
+      try {
+        const result = await api.register(name.trim(), email.trim(), password);
+        await finishAuth(result);
+      } catch (error) {
+        dispatch({ type: 'FAILURE', error: error.message });
+      }
+    },
+    [finishAuth],
+  );
+
+  const requireToken = useCallback(() => {
+    if (!tokenRef.current) {
+      throw new Error('Nicht eingeloggt');
+    }
+
+    return tokenRef.current;
+  }, []);
+
+  const runMutation = useCallback(
+    async (mutation) => {
+      if (!currentUser) {
+        return;
+      }
+
+      try {
+        const token = requireToken();
+        await mutation(token);
+        await refreshDashboard(token);
+      } catch (error) {
+        dispatch({ type: 'FAILURE', error: error.message });
+      }
+    },
+    [currentUser, refreshDashboard, requireToken],
+  );
+
+  const currentRoute = useMemo(
+    () => state.routes.find((route) => route.id === state.activeRouteId) ?? null,
+    [state.activeRouteId, state.routes],
+  );
+
+  const leaderboard = useMemo(
+    () =>
+      [...state.users].sort(
+        (left, right) => (right.score ?? 0) - (left.score ?? 0) || (left.totalAttempts ?? 0) - (right.totalAttempts ?? 0),
+      ),
+    [state.users],
+  );
 
   const currentUserStats = useMemo(() => {
     if (!currentUser) {
       return null;
     }
 
-    const toppedRoutes = currentUser.climbedRoutes.filter((entry) => entry.topped);
-    const totalAttempts = currentUser.climbedRoutes.reduce((sum, entry) => sum + entry.attempts, 0);
-    const hardestRoute = toppedRoutes.reduce((hardest, entry) => {
-      const route = routes.find((item) => item.id === entry.routeId);
-      if (!route) {
-        return hardest;
+    return (
+      state.currentUserStats ?? {
+        routesCount: 0,
+        totalAttempts: 0,
+        hardestRoute: null,
+        completionRate: 0,
+        progressToNextLevel: 0,
       }
-      return !hardest || route.gradeValue > hardest.gradeValue ? route : hardest;
-    }, null);
-
-    return {
-      routesCount: toppedRoutes.length,
-      totalAttempts,
-      hardestRoute,
-      completionRate: totalAttempts ? Math.round((toppedRoutes.length / totalAttempts) * 100) : 0,
-      progressToNextLevel: Math.min(100, toppedRoutes.length * 12),
-    };
-  }, [currentUser]);
+    );
+  }, [currentUser, state.currentUserStats]);
 
   const achievements = useMemo(
-    () => (currentUser ? buildAchievements(currentUser) : { weekly: [], milestone: [] }),
-    [currentUser],
+    () => (currentUser ? buildAchievements(currentUser, state.routes) : { weekly: [], milestone: [] }),
+    [currentUser, state.routes],
   );
 
   const value = useMemo(
     () => ({
+      demoAccounts,
       users: state.users,
-      routes,
+      routes: state.routes,
       currentUser,
       currentRoute,
       leaderboard,
       achievements,
       currentUserStats,
+      loading: state.loading,
+      error: state.error,
       sessionActive: state.sessionActive,
       sessionStartedAt: state.sessionStartedAt,
-      login: (userId) => dispatch({ type: 'LOGIN', userId }),
-      logout: () => dispatch({ type: 'LOGOUT' }),
-      startSession: () => dispatch({ type: 'START_SESSION' }),
-      stopSession: () => dispatch({ type: 'STOP_SESSION' }),
+      login,
+      register,
+      logout: () => {
+        tokenRef.current = null;
+        dispatch({ type: 'LOGOUT' });
+      },
+      startSession: async () => {
+        if (!currentUser) {
+          return;
+        }
+
+        try {
+          const token = requireToken();
+          const result = await api.startSession(token);
+          dispatch({
+            type: 'SESSION_STARTED',
+            startedAt: result.session.startedAt,
+            user: currentUser,
+          });
+          await refreshDashboard(token);
+        } catch (error) {
+          dispatch({ type: 'FAILURE', error: error.message });
+        }
+      },
+      stopSession: async () => {
+        await runMutation((token) => api.stopSession(token));
+        dispatch({ type: 'SESSION_STOPPED' });
+      },
       openRoute: (routeId) => dispatch({ type: 'OPEN_ROUTE', routeId }),
-      updateName: (name) => dispatch({ type: 'UPDATE_NAME', name }),
-      cycleAvatar: () => dispatch({ type: 'CYCLE_AVATAR' }),
-      incrementAttempt: (routeId) => dispatch({ type: 'INCREMENT_ATTEMPT', routeId }),
-      resetAttempts: (routeId) => dispatch({ type: 'RESET_ATTEMPTS', routeId }),
-      completeRoute: (routeId) => dispatch({ type: 'COMPLETE_ROUTE', routeId }),
+      updateName: (name) => runMutation((token) => api.updateProfile(token, { name })),
+      cycleAvatar: () => {
+        const currentIndex = avatarColors.indexOf(currentUser?.avatarColor);
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % avatarColors.length;
+        return runMutation((token) =>
+          api.updateProfile(token, { avatarColor: avatarColors[nextIndex] }),
+        );
+      },
+      incrementAttempt: (routeId) => runMutation((token) => api.incrementAttempt(token, routeId)),
+      resetAttempts: (routeId) => runMutation((token) => api.resetAttempts(token, routeId)),
+      completeRoute: (routeId) => runMutation((token) => api.completeRoute(token, routeId)),
     }),
-    [achievements, currentRoute, currentUser, currentUserStats, leaderboard, state.sessionActive, state.sessionStartedAt, state.users],
+    [
+      achievements,
+      currentRoute,
+      currentUser,
+      currentUserStats,
+      leaderboard,
+      login,
+      register,
+      refreshDashboard,
+      requireToken,
+      runMutation,
+      state.error,
+      state.loading,
+      state.routes,
+      state.sessionActive,
+      state.sessionStartedAt,
+      state.users,
+    ],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
@@ -226,4 +398,3 @@ export function useAppState() {
 
   return context;
 }
-

@@ -1,56 +1,126 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '../components/AppScreen';
-import { AvatarBadge } from '../components/AvatarBadge';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import { useAppState } from '../hooks/useAppState';
 import { theme } from '../data/theme';
 
 export function LoginScreen() {
-  const { users, login } = useAppState();
-  const [selectedUserId, setSelectedUserId] = useState(users[0]?.id ?? null);
-  const selectedUser = useMemo(
-    () => users.find((user) => user.id === selectedUserId) ?? users[0],
-    [selectedUserId, users],
-  );
+  const { error, loading, login, register } = useAppState();
+  const [mode, setMode] = useState('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const isRegister = mode === 'register';
+  const formError = useMemo(() => {
+    if (!email.trim() || !password) {
+      return 'E-Mail und Passwort sind erforderlich.';
+    }
+
+    if (isRegister && name.trim().length < 2) {
+      return 'Name muss mindestens 2 Zeichen haben.';
+    }
+
+    if (isRegister && password.length < 8) {
+      return 'Passwort muss mindestens 8 Zeichen haben.';
+    }
+
+    return null;
+  }, [email, isRegister, name, password]);
+
+  const handleSubmit = () => {
+    const payload = { name, email, password };
+
+    if (isRegister) {
+      register(payload);
+      return;
+    }
+
+    login(payload);
+  };
 
   return (
     <AppScreen>
       <View style={styles.hero}>
         <Text style={styles.kicker}>Kletterwerk Radolfzell</Text>
-        <Text style={styles.title}>Mockup Mobile App fuer realistischen Boulder-Flow</Text>
+        <Text style={styles.title}>Dein Boulder-Account</Text>
         <Text style={styles.subtitle}>
-          Login ist nur simuliert. Danach startet die User Journey erst bewusst ueber den Session-Start.
+          Melde dich an oder lege einen neuen User an. Danach startet deine Session und dein Tracking direkt ueber das Backend.
         </Text>
       </View>
 
-      <SectionCard eyebrow="Mock Login" title="User auswaehlen">
-        <View style={styles.userList}>
-          {users.map((user) => {
-            const selected = user.id === selectedUserId;
-
-            return (
-              <Pressable
-                key={user.id}
-                onPress={() => setSelectedUserId(user.id)}
-                style={[styles.userCard, selected && styles.userCardSelected]}
-              >
-                <AvatarBadge color={user.avatarColor} name={user.name} />
-                <View style={styles.userCopy}>
-                  <Text style={styles.userName}>{user.name}</Text>
-                  <Text style={styles.userMeta}>
-                    {user.level} - {user.sessionsCount} Sessions
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
+      <SectionCard eyebrow="Account" title={isRegister ? 'Registrieren' : 'Einloggen'}>
+        <View style={styles.segmented}>
+          <Pressable
+            onPress={() => setMode('login')}
+            style={[styles.segment, !isRegister && styles.segmentActive]}
+          >
+            <Text style={[styles.segmentLabel, !isRegister && styles.segmentLabelActive]}>Login</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode('register')}
+            style={[styles.segment, isRegister && styles.segmentActive]}
+          >
+            <Text style={[styles.segmentLabel, isRegister && styles.segmentLabelActive]}>
+              Registrieren
+            </Text>
+          </Pressable>
         </View>
+
+        {isRegister ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Name</Text>
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={setName}
+              placeholder="Max Mustermann"
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.input}
+              value={name}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.field}>
+          <Text style={styles.label}>E-Mail</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            inputMode="email"
+            keyboardType="email-address"
+            onChangeText={setEmail}
+            placeholder="du@example.com"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            value={email}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Passwort</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setPassword}
+            placeholder={isRegister ? 'Mindestens 8 Zeichen' : 'Dein Passwort'}
+            placeholderTextColor={theme.colors.textMuted}
+            secureTextEntry
+            style={styles.input}
+            value={password}
+          />
+        </View>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
         <PrimaryButton
-          label={`Login als ${selectedUser?.name ?? 'User'}`}
-          onPress={() => login(selectedUserId)}
+          disabled={loading || Boolean(formError)}
+          label={loading ? 'Verbinde...' : isRegister ? 'Account erstellen' : 'Einloggen'}
+          onPress={handleSubmit}
         />
+
+        {formError ? <Text style={styles.hint}>{formError}</Text> : null}
       </SectionCard>
     </AppScreen>
   );
@@ -78,31 +148,53 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  userList: {
-    gap: theme.spacing.sm,
-  },
-  userCard: {
+  segmented: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
     backgroundColor: theme.colors.cardSoft,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: theme.colors.border,
+    padding: 4,
   },
-  userCardSelected: {
-    borderColor: theme.colors.accent,
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: theme.radius.sm,
+    paddingVertical: 10,
   },
-  userCopy: {
-    gap: 4,
+  segmentActive: {
+    backgroundColor: theme.colors.accent,
   },
-  userName: {
-    color: theme.colors.text,
-    fontSize: 16,
+  segmentLabel: {
+    color: theme.colors.textMuted,
     fontWeight: '800',
   },
-  userMeta: {
+  segmentLabelActive: {
+    color: '#101316',
+  },
+  field: {
+    gap: 8,
+  },
+  label: {
+    color: theme.colors.text,
+    fontWeight: '700',
+  },
+  input: {
+    backgroundColor: theme.colors.cardSoft,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    color: theme.colors.text,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 14,
+  },
+  error: {
+    color: theme.colors.danger,
+    lineHeight: 20,
+  },
+  hint: {
     color: theme.colors.textMuted,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

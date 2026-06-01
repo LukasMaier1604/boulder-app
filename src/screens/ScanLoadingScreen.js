@@ -21,6 +21,10 @@ export function ScanLoadingScreen({ navigation }) {
   const { selectedRoute } = useMockScan(handleResolved);
 
   const handleManualLoad = () => {
+    if (!selectedRoute && !routes.length) {
+      return;
+    }
+
     openRoute(selectedRoute?.id ?? routes[0].id);
     navigation.replace('RouteDetails');
   };
@@ -32,7 +36,12 @@ export function ScanLoadingScreen({ navigation }) {
           <ActivityIndicator color={theme.colors.accentSoft} size="large" />
           <Text style={styles.copy}>NFC-Tag wird simuliert. Bitte kurz warten.</Text>
         </View>
-        <PrimaryButton label="Route manuell laden" onPress={handleManualLoad} variant="secondary" />
+        <PrimaryButton
+          disabled={!selectedRoute && !routes.length}
+          label="Route manuell laden"
+          onPress={handleManualLoad}
+          variant="secondary"
+        />
       </SectionCard>
     </AppScreen>
   );
@@ -52,4 +61,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
