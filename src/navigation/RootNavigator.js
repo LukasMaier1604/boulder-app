@@ -5,7 +5,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ScanScreen } from '../screens/ScanScreen';
-import { ScanLoadingScreen } from '../screens/ScanLoadingScreen';
 import { RouteScreen } from '../screens/RouteScreen';
 import { LeaderboardScreen } from '../screens/LeaderboardScreen';
 import { UserDetailScreen } from '../screens/UserDetailScreen';
@@ -34,7 +33,6 @@ function ScanNavigator() {
   return (
     <ScanStack.Navigator screenOptions={{ headerShown: false }}>
       <ScanStack.Screen component={ScanScreen} name="ScanHome" />
-      <ScanStack.Screen component={ScanLoadingScreen} name="ScanLoading" />
       <ScanStack.Screen component={RouteScreen} name="RouteDetails" />
     </ScanStack.Navigator>
   );

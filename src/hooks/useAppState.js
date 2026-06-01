@@ -1,10 +1,13 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from 'react';
 import { achievementTemplates } from '../data/mockData';
 import { api } from '../services/api';
@@ -91,6 +94,11 @@ function reducer(state, action) {
         loading: false,
         error: null,
       };
+    case 'HYDRATE_FROM_STORAGE':
+      return {
+        ...state,
+        isHydrated: true,
+      };
     case 'LOGOUT':
       return {
         ...state,
@@ -160,7 +168,63 @@ function buildAchievements(user, routes) {
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [isHydrating, setIsHydrating] = useState(true);
   const tokenRef = useRef(null);
+
+  // Restore token from AsyncStorage on app startup
+  useEffect(() => {
+    const hydrateToken = async () => {
+      try {
+        const storedToken = await AsyncStorage.getItem('auth_token');
+        if (storedToken) {
+          tokenRef.current = storedToken;
+          const meResult = await api.me(storedToken);
+          const latestSession = meResult.user.sessions?.[0];
+          const sessionActive = Boolean(latestSession && !latestSession.endedAt);
+          const user = normalizeUser(meResult.user);
+
+          dispatch({
+            type: 'LOGIN_SUCCESS',
+            user,
+            sessionActive,
+            sessionStartedAt: sessionActive ? latestSession.startedAt : null,
+          });
+
+          // Then refresh full dashboard
+          await Promise.all([
+            api.routes(storedToken),
+            api.leaderboard(storedToken),
+            api.stats(storedToken),
+            api.climbed(storedToken),
+          ]).then(([routesResult, leaderboardResult, statsResult, climbedResult]) => {
+            const leaderboardUsers = (leaderboardResult.leaderboard ?? []).map((u) => ({
+              ...u,
+              climbedRoutes: [],
+            }));
+            const fullCurrentUser = {
+              ...leaderboardUsers.find((u) => u.id === meResult.user.id),
+              ...normalizeUser(meResult.user, climbedResult.climbedRoutes ?? []),
+            };
+
+            dispatch({
+              type: 'HYDRATE',
+              routes: (routesResult.routes ?? []).map(normalizeRoute),
+              users: mergeUsers(leaderboardUsers, fullCurrentUser),
+              stats: statsResult.stats,
+            });
+          });
+        }
+      } catch (error) {
+        // Token invalid or expired - clear it
+        await AsyncStorage.removeItem('auth_token');
+        tokenRef.current = null;
+      } finally {
+        setIsHydrating(false);
+      }
+    };
+
+    hydrateToken();
+  }, []);
 
   const currentUser = useMemo(
     () => state.users.find((user) => user.id === state.currentUserId) ?? null,
@@ -206,6 +270,8 @@ export function AppProvider({ children }) {
   const finishAuth = useCallback(
     async (authResult) => {
       tokenRef.current = authResult.token;
+      // Save token to AsyncStorage for persistence
+      await AsyncStorage.setItem('auth_token', authResult.token);
 
       const meResult = await api.me(authResult.token);
       const latestSession = meResult.user.sessions?.[0];
@@ -327,8 +393,9 @@ export function AppProvider({ children }) {
       sessionStartedAt: state.sessionStartedAt,
       login,
       register,
-      logout: () => {
+      logout: async () => {
         tokenRef.current = null;
+        await AsyncStorage.removeItem('auth_token');
         dispatch({ type: 'LOGOUT' });
       },
       startSession: async () => {
