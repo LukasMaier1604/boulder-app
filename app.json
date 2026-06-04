@@ -12,6 +12,14 @@
       "resizeMode": "contain",
       "backgroundColor": "#111315"
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Die App benötigt Zugriff auf die Kamera zum Scannen von QR-Codes."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -21,7 +29,10 @@
         "backgroundColor": "#111315"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.demo.boulderhall"
+      "package": "com.demo.boulderhall",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
